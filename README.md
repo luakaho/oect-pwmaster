@@ -134,6 +134,21 @@ LED-B   LED-G   VCC3V3   LED-R
 
 前提：装好 Docker / Docker Compose 的 fnOS（或其他 Linux）。
 
+### 方式一：直接用预构建镜像（推荐，不用编译）
+
+```bash
+docker run -d --name oect-pwmaster --restart unless-stopped --privileged \
+  -p 8090:8090   -v /dev:/dev -v /sys:/sys \
+  -v /vol1/1000/oect-pwmaster:/data \
+  -v /etc/localtime:/etc/localtime:ro \
+  -e FAN_DATA=/data -e TZ=Asia/Shanghai \
+  ghcr.io/luakaho/oect-pwmaster:latest
+```
+
+镜像由 GitHub Actions 自动构建（arm64/amd64 都有）。想用 compose 就下 `docker-compose.yml` 后 `docker compose up -d`。
+
+### 方式二：本地构建
+
 ```bash
 git clone <本仓库地址> oect-pwmaster
 cd oect-pwmaster
@@ -168,11 +183,13 @@ data/
 
 ## 5. 网页面板
 
+> 当前版本 **1.1.0**：新增「测试风扇」按钮、守护离线提示、配置校验与保存结果回显、自动模式下手动区锁定。
+
 > 默认界面只露**温度状态、曲线图、三个一键方案**；曲线、手动控制、阈值等全部收在 **「专业设置」** 折叠区里，点开才能改。
 
 - **状态**：CPU 温度、所有硬盘温度、当前档位、转速（未接测速时显示“未启用”）、模式
 - **曲线图**：最近约 6 分钟的 CPU / 最高盘温 / 档位
-- **手动**：滑杆 0–100% + 回到自动
+- **手动**：自动模式下手动区会置灰锁定，点「启用手动」才可拖动；另有「测试风扇（10 秒）」按钮，一键全速验证接线
 - **一键方案**（整套参数一起换）：
   - **静音**：38℃ 起转
   - **均衡**：33℃ 起转（默认）

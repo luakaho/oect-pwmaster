@@ -205,7 +205,7 @@ async function tick(){try{
  document.getElementById('duty').textContent=s.duty+'%';
  document.getElementById('rpm').textContent=(s.rpm===undefined||s.rpm<0)?'未启用（安全模式）':(s.rpm>0?s.rpm+' 转':'无信号');
  document.getElementById('mode').textContent=s.mode||'自动';
- document.getElementById('sl').value=s.duty;document.getElementById('slv').textContent=s.duty+'%';
+ const slEl=document.getElementById('sl');if(slEl&&Date.now()>(window.__slPause||0)){slEl.value=s.duty;document.getElementById('slv').textContent=s.duty+'%';}
  hist=await (await fetch('api/history')).json();draw();
 }catch(e){}}
 function draw(){try{
@@ -223,7 +223,7 @@ function draw(){try{
 }catch(e){console.error('draw failed',e);}}
 async function applyManual(){const v=document.getElementById('sl').value;await fetch('api/duty?v='+v,{method:'POST'});tick()}
 async function setAuto(){await fetch('api/duty',{method:'DELETE'});tick()}
-document.getElementById('sl').addEventListener('input',e=>document.getElementById('slv').textContent=e.target.value+'%');
+document.getElementById('sl').addEventListener('input',e=>{window.__slPause=Date.now()+10000;document.getElementById('slv').textContent=e.target.value+'%';});
 const tip=document.getElementById('tip');
 document.addEventListener('click',e=>{
  const h=e.target.closest('.help');

@@ -50,10 +50,10 @@ def history(n=180):
     try:
         with open(LOG) as f: lines = f.readlines()[-n:]
         for ln in lines:
-            m = re.match(r"(\S+ \S+),cpu=([-\d.]+),d1=([-\d.]+),d2=([-\d.]+),d3=([-\d.]+),duty=(\d+),rpm=(-?\d+)", ln.strip())
+            m = re.match(r"(\S+ \S+),cpu=([-\d.]+),n=(\d+),dmax=([-\d.]+),davg=([-\d.]+),duty=(\d+),rpm=(-?\d+)", ln.strip())
             if m:
-                out.append({"t": m.group(1), "cpu": float(m.group(2)), "d1": float(m.group(3)),
-                            "d2": float(m.group(4)), "d3": float(m.group(5)),
+                out.append({"t": m.group(1), "cpu": float(m.group(2)), "n": int(m.group(3)),
+                            "dmax": float(m.group(4)), "davg": float(m.group(5)),
                             "duty": int(m.group(6)), "rpm": int(m.group(7))})
     except Exception:
         pass
@@ -92,7 +92,7 @@ canvas{width:100%;height:140px;display:block}
 
 <div class=grid>
  <div class=card><div class=k>CPU 温度</div><div class=v id=t_cpu>--</div></div>
- <div class=card><div class=k>硬盘 1/2/3</div><div class="v small" id=t_disk>--</div></div>
+ <div class=card><div class=k>硬盘温度</div><div class="v small" id=t_disk>--</div></div>
  <div class=card><div class=k>风扇档位</div><div class=v id=duty>--</div></div>
  <div class=card><div class=k>转速</div><div class="v small" id=rpm>--</div></div>
  <div class=card><div class=k>模式</div><div class="v small" id=mode>--</div></div>
@@ -100,7 +100,7 @@ canvas{width:100%;height:140px;display:block}
 
 <div class=panel><canvas id=chart></canvas><div class=legend>
 <span><i class=dot style="background:#4ea1ff"></i>CPU</span>
-<span><i class=dot style="background:#ffb020"></i>最高盘温</span>
+<span><i class=dot style="background:#ffb020"></i>硬盘最高温</span>
 <span><i class=dot style="background:#57d38c"></i>风扇档位</span></div></div>
 
 <div class=panel>
@@ -201,7 +201,7 @@ async function saveCfg(){
 async function tick(){try{
  const s=await (await fetch('api/status')).json(); if(s.error)return;
  document.getElementById('t_cpu').textContent=(s.cpu_c??'--')+'℃';
- document.getElementById('t_disk').textContent=[s.d1_c,s.d2_c,s.d3_c].map(x=>x?x+'℃':'--').join(' / ');
+ document.getElementById('t_disk').textContent=(s.disk_n?('最高 '+s.disk_max_c+'℃ · '+s.disk_n+' 块'):'--');
  document.getElementById('duty').textContent=s.duty+'%';
  document.getElementById('rpm').textContent=(s.rpm===undefined||s.rpm<0)?'未启用（安全模式）':(s.rpm>0?s.rpm+' 转':'无信号');
  document.getElementById('mode').textContent=s.mode||'自动';
@@ -214,7 +214,7 @@ function draw(){const cv=document.getElementById('chart'),g=cv.getContext('2d');
  const maxT=Math.max(70,Math.max(...hist.map(h=>Math.max(h.cpu,h.d1,h.d2,h.d3)))+5);
  const X=i=>i*(W-20)/(hist.length-1)+10,Y=t=>H-20-(t/maxT)*(H-40);
  const line=(f,c)=>{g.beginPath();g.strokeStyle=c;g.lineWidth=3;hist.forEach((h,i)=>{const v=Math.min(f(h),maxT);i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v))});g.stroke()};
- line(h=>h.cpu,'#4ea1ff');line(h=>Math.max(h.d1,h.d2,h.d3),'#ffb020');line(h=>h.duty*maxT/100,'#57d38c');}
+ line(h=>h.cpu,'#4ea1ff');line(h=>h.dmax,'#ffb020');line(h=>h.duty*maxT/100,'#57d38c');}
 async function applyManual(){const v=document.getElementById('sl').value;await fetch('api/duty?v='+v,{method:'POST'});tick()}
 async function setAuto(){await fetch('api/duty',{method:'DELETE'});tick()}
 document.getElementById('sl').addEventListener('input',e=>document.getElementById('slv').textContent=e.target.value+'%');

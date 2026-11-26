@@ -9,7 +9,7 @@ min_duty=0
 max_duty=100
 # 温度读不到时的保底占空比
 failsafe_duty=60
-# 三块盘怎么合成一个温度：max=取最高, avg=取平均
+# 多块盘怎么合成一个温度：max=取最高(推荐), avg=取平均；只有一块盘时等价
 hdd_mode=max
 # 采样间隔（秒）
 update_sec=2

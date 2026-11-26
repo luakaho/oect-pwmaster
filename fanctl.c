@@ -101,6 +101,28 @@ static void busy_until(long long t){
 }
 static double read_t(const char *p){ FILE*f=fopen(p,"r"); if(!f) return -1; long v=0; if(fscanf(f,"%ld",&v)!=1){fclose(f);return -1;} fclose(f); return v/1000.0; }
 
+/* 自动发现所有 drivetemp 类型的硬盘温度（1~N 块都支持） */
+static int scan_disks(double *out, int maxn) {
+    int n = 0;
+    for (int i = 0; i < 32 && n < maxn; i++) {
+        char base[128], namep[160], tempp[160];
+        snprintf(base, sizeof base, "/sys/class/hwmon/hwmon%d", i);
+        struct stat st;
+        if (stat(base, &st) != 0) continue;
+        snprintf(namep, sizeof namep, "%s/name", base);
+        FILE *f = fopen(namep, "r");
+        if (!f) continue;
+        char name[64]; memset(name, 0, sizeof name);
+        if (!fgets(name, sizeof name - 1, f)) { fclose(f); continue; }
+        fclose(f);
+        if (strncmp(name, "drivetemp", 9) != 0) continue;
+        snprintf(tempp, sizeof tempp, "%s/temp1_input", base);
+        double t = read_t(tempp);
+        if (t > 0) out[n++] = t;
+    }
+    return n;
+}
+
 static double curve_val(const curve_t *c, double t) {
     if (c->n <= 0) return 0;
     if (t <= c->t[0]) return c->d[0];
@@ -232,12 +254,14 @@ static void *ctrl_thread(void *a) {
     while (g_run) {
         cfg_reload = load_cfg();
         double cpu = read_t("/sys/class/thermal/thermal_zone0/temp");
-        double d1 = read_t("/sys/class/hwmon/hwmon2/temp1_input");
-        double d2 = read_t("/sys/class/hwmon/hwmon3/temp1_input");
-        double d3 = read_t("/sys/class/hwmon/hwmon4/temp1_input");
-        double hdd;
-        if (g_hdd_mode == 1) hdd = (d1+d2+d3)/3.0;
-        else { hdd = d1; if (d2 > hdd) hdd = d2; if (d3 > hdd) hdd = d3; }
+        double dts[16]; int dn = scan_disks(dts, 16);
+        double dmax = -1, davg = -1, dsum = 0;
+        if (dn > 0) {
+            dmax = dts[0];
+            for (int i = 0; i < dn; i++) { if (dts[i] > dmax) dmax = dts[i]; dsum += dts[i]; }
+            davg = dsum / dn;
+        }
+        double hdd = (g_hdd_mode == 1) ? davg : dmax;
         int duty;
         if (cpu < 0) duty = g_failsafe;
         else {
@@ -276,10 +300,15 @@ static void *ctrl_thread(void *a) {
         time_t tt = time(NULL); struct tm tm; localtime_r(&tt, &tm);
         char ts[32]; strftime(ts, sizeof ts, "%F %T", &tm);
         FILE *lf = fopen(logp, "a");
-        if (lf) { fprintf(lf, "%s,cpu=%.0f,d1=%.0f,d2=%.0f,d3=%.0f,duty=%d,rpm=%d\n", ts,cpu,d1,d2,d3,duty,g_rpm); fclose(lf); }
+        if (lf) { fprintf(lf, "%s,cpu=%.0f,n=%d,dmax=%.0f,davg=%.0f,duty=%d,rpm=%d\n", ts,cpu,dn,dmax,davg,duty,g_rpm); fclose(lf); }
+        char dj[256]; int djlen = 0;
+        djlen += snprintf(dj + djlen, sizeof dj - djlen, "[");
+        for (int i = 0; i < dn && djlen < (int)sizeof dj - 16; i++)
+            djlen += snprintf(dj + djlen, sizeof dj - djlen, "%s%.0f", i ? "," : "", dts[i]);
+        djlen += snprintf(dj + djlen, sizeof dj - djlen, "]");
         FILE *sf = fopen(g_status, "w");
-        if (sf) { fprintf(sf, "{\"time\":\"%s\",\"cpu_c\":%.1f,\"d1_c\":%.1f,\"d2_c\":%.1f,\"d3_c\":%.1f,\"duty\":%d,\"rpm\":%d,\"freq\":%d,\"mode\":\"%s\",\"min_duty\":%d,\"max_duty\":%d,\"hyst_start\":%.0f,\"hyst_stop\":%.0f,\"fail\":%d,\"update_ms\":%d,\"boost_gain\":%.1f,\"boost_max\":%.1f,\"freq\":%d,\"spin_us\":%d,\"deadband_duty\":%d}\n",
-                    ts, cpu, d1, d2, d3, duty, g_rpm, FREQ, access(g_manual,F_OK)==0?"手动":"自动", g_min_duty, g_max_duty, g_hyst_start, g_hyst_stop, g_failsafe, g_update_ms, g_boost_gain, g_boost_max, g_freq, g_spin_us, g_deadband); fclose(sf); }
+        if (sf) { fprintf(sf, "{\"time\":\"%s\",\"cpu_c\":%.1f,\"disk_n\":%d,\"disk_max_c\":%.1f,\"disk_avg_c\":%.1f,\"disks_c\":%s,\"duty\":%d,\"rpm\":%d,\"freq\":%d,\"mode\":\"%s\",\"min_duty\":%d,\"max_duty\":%d,\"hyst_start\":%.0f,\"hyst_stop\":%.0f,\"fail\":%d,\"update_ms\":%d,\"boost_gain\":%.1f,\"boost_max\":%.1f,\"freq\":%d,\"spin_us\":%d,\"deadband_duty\":%d}\n",
+                    ts, cpu, dn, dmax, davg, dj, duty, g_rpm, FREQ, access(g_manual,F_OK)==0?"手动":"自动", g_min_duty, g_max_duty, g_hyst_start, g_hyst_stop, g_failsafe, g_update_ms, g_boost_gain, g_boost_max, g_freq, g_spin_us, g_deadband); fclose(sf); }
         for (int slept = 0; slept < g_update_ms && g_run; slept += 100) usleep(100000);
     }
     return NULL;

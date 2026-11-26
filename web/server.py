@@ -16,6 +16,7 @@ CTRL = os.path.join(DATA, "manual.duty")
 LOG  = os.path.join(DATA, "fan.log")
 STAT = os.path.join(DATA, "status.json")
 PORT = int(os.environ.get("PORT", "8090"))
+VERSION = "1.1.0"
 
 DEFCFG = """cpu_curve=33:25,40:50,48:75,58:100
 hdd_curve=35:0,40:40,45:65,50:100
@@ -38,6 +39,51 @@ def read_cfg():
         with open(CFGF) as f: return f.read()
     except Exception:
         return DEFCFG
+
+def _num(v, lo, hi):
+    try:
+        f = float(v)
+    except Exception:
+        return None
+    if f < lo or f > hi:
+        return None
+    return f
+
+def validate_cfg(k, v):
+    """返回 None 表示合法，否则返回错误描述。"""
+    if k in ("cpu_curve", "hdd_curve"):
+        pts = [p for p in v.split(",") if p.strip()]
+        if not (2 <= len(pts) <= 6):
+            return "需要 2~6 个点"
+        last = -1
+        for p in pts:
+            if ":" not in p:
+                return "格式应为 温度:档位"
+            a, b = p.split(":", 1)
+            t, d = _num(a, 10, 95), _num(b, 0, 100)
+            if t is None:
+                return "温度需在 10~95 之间"
+            if d is None:
+                return "档位需在 0~100 之间"
+            if t <= last:
+                return "温度必须递增"
+            last = t
+        return None
+    if k in ("hyst_start", "hyst_stop"):
+        return None if _num(v, 0, 110) is not None else "需在 0~110 之间"
+    if k in ("min_duty", "max_duty", "failsafe_duty", "deadband_duty"):
+        return None if _num(v, 0, 100) is not None else "需在 0~100 之间"
+    if k == "update_sec":
+        return None if _num(v, 1, 60) is not None else "需在 1~60 秒之间"
+    if k in ("boost_gain", "boost_max"):
+        return None if _num(v, 0, 60) is not None else "需在 0~60 之间"
+    if k == "freq":
+        return None if _num(v, 1000, 30000) is not None else "需在 1000~30000 Hz 之间"
+    if k == "spin_us":
+        return None if _num(v, 0, 20) is not None else "需在 0~20 微秒之间"
+    if k == "hdd_mode":
+        return None if v in ("max", "avg") else "只能是 max 或 avg"
+    return None
 
 def status():
     try:
@@ -91,6 +137,7 @@ canvas{width:100%;height:auto;display:block}
 .presets button.active{background:var(--acc);border-color:var(--acc)}
 </style></head><body>
 <h1>OECT-PWMaster</h1>
+<div id=offline style="display:none;background:#5a1d1d;border:1px solid #a33;color:#ffd7d7;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px">⚠️ 守护进程无响应：页面数据已过期（超过 10 秒没更新），风扇控制不可用</div>
 <div class=sub>点每个标题后面的 <span class=help>?</span> 看说明</div>
 
 <div class=grid>
@@ -124,6 +171,7 @@ canvas{width:100%;height:auto;display:block}
    <button id=btnEnable onclick=enableManual()>启用手动</button>
    <button id=btnApply onclick=applyManual() disabled>应用</button>
    <button id=btnAuto class=gray onclick=setAuto()>回到自动</button>
+   <button id=btnTest class=gray onclick=testFan()>测试风扇（10 秒）</button>
  </div>
 </div>
 
@@ -201,7 +249,15 @@ async function saveCfg(){
   'max_duty='+g('max_duty'),'failsafe_duty='+g('failsafe_duty'),
   'hdd_mode='+document.getElementById('hdd_mode').value,'update_sec='+g('update_sec'),'boost_gain='+g('boost_gain'),'boost_max='+g('boost_max'),'freq='+g('freq'),'spin_us='+g('spin_us'),'deadband_duty='+g('deadband_duty')].join('\n')+'\n';
  const r=await fetch('api/config',{method:'POST',body:txt});
- document.getElementById('savenote').textContent=r.ok?'已保存，2 秒内生效':'保存失败';
+ let note='';
+ try{ const j=await r.json();
+   if(!r.ok||j.error){ note='保存失败：'+(j.error||'未知错误'); }
+   else {
+     const a=j.applied||{};
+     note='已保存（2 秒内生效）· 起转 '+a.hyst_start+'℃ / 最低 '+a.min_duty+'% / 频率 '+(a.freq||'-')+'Hz';
+   }
+ }catch(e){ note=r.ok?'已保存':'保存失败'; }
+ document.getElementById('savenote').textContent=note;
  if(r.ok){cfg=txt;markActive();}
  setTimeout(()=>document.getElementById('savenote').textContent='',4000);
 }
@@ -212,6 +268,10 @@ async function tick(){try{
  document.getElementById('duty').textContent=s.duty+'%';
  document.getElementById('rpm').textContent=(s.rpm===undefined||s.rpm<0)?'未启用（安全模式）':(s.rpm>0?s.rpm+' 转':'无信号');
  document.getElementById('mode').textContent=s.mode||'自动';
+ const stale = (s.ts && (Date.now()/1000 - s.ts > 10));
+ const offBox = document.getElementById('offline');
+ if(offBox) offBox.style.display = stale ? 'block' : 'none';
+ if(stale){ hist = hist || []; draw(); return; }
  const manual=(s.mode||'')==='手动';
  const mp=document.getElementById('manualPanel');
  if(mp) mp.classList.toggle('off',!manual);
@@ -241,6 +301,10 @@ async function enableManual(){
  const v=sl?sl.value:(50);
  await fetch('api/duty?v='+v,{method:'POST'});
  window.__slPause=Date.now()+8000;
+ tick();
+}
+async function testFan(){
+ await fetch('api/test?sec=10&duty=100',{method:'POST'});
  tick();
 }
 async function applyManual(){const v=document.getElementById('sl').value;await fetch('api/duty?v='+v,{method:'POST'});tick()}
@@ -273,6 +337,8 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/status":  return self._s(json.dumps(status(), ensure_ascii=False))
         if p == "/api/history": return self._s(json.dumps(history()))
         if p == "/api/config":  return self._s(read_cfg(), "text/plain; charset=utf-8")
+        if p == "/api/version":
+            return self._s(json.dumps({"name": "OECT-PWMaster", "version": VERSION}))
         if p == "/healthz":     return self._s("ok", "text/plain")
         self._s(json.dumps({"error": "not found"}), code=404)
 
@@ -289,16 +355,42 @@ class H(BaseHTTPRequestHandler):
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1)
                         old[k.strip()] = v.strip()
+                bad = []
                 for line in body.splitlines():
                     line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        old[k.strip()] = v.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    err = validate_cfg(k, v)
+                    if err:
+                        bad.append("%s: %s" % (k, err))
+                        continue
+                    old[k] = v
+                if bad:
+                    self._s(json.dumps({"error": "；".join(bad)}, ensure_ascii=False), code=400)
+                    return
                 merged = "".join("%s=%s\n" % (k, v) for k, v in old.items())
                 with open(CFGF, "w") as f: f.write(merged)
-                self._s(json.dumps({"ok": True}))
+                self._s(json.dumps({"ok": True, "applied": old}, ensure_ascii=False))
             except Exception as e:
                 self._s(json.dumps({"error": str(e)}), code=500)
+            return
+        if p == "/api/test":
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                sec = max(1, min(120, int(q.get("sec", ["10"])[0])))
+                duty = max(0, min(100, int(q.get("duty", ["100"])[0])))
+                with open(CTRL, "w") as f: f.write(str(duty))
+                import threading, time as _time
+                def _revert():
+                    _time.sleep(sec)
+                    try: os.remove(CTRL)
+                    except FileNotFoundError: pass
+                threading.Thread(target=_revert, daemon=True).start()
+                self._s(json.dumps({"ok": True, "sec": sec, "duty": duty}))
+            except Exception as e:
+                self._s(json.dumps({"error": str(e)}), code=400)
             return
         if p == "/api/duty":
             q = parse_qs(urlparse(self.path).query)

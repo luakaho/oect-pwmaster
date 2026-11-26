@@ -1,0 +1,18 @@
+services:
+  oect-pwmaster:
+    build: .
+    image: oect-pwmaster:latest
+    container_name: oect-pwmaster
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - FAN_DATA=/data
+      - PORT=8090
+      - TZ=Asia/Shanghai
+    ports:
+      - "8090:8090"
+    volumes:
+      - /dev:/dev
+      - /sys:/sys
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro

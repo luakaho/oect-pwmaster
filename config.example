@@ -1,0 +1,23 @@
+# 温度 → 占空比曲线，格式 温度:占空比，最多 6 个点，按温度升序
+cpu_curve=33:25,40:50,48:75,58:100
+hdd_curve=35:0,40:40,45:65,50:100
+# CPU 到该温度才起转；低于 stop 才停（回差）
+hyst_start=33
+hyst_stop=31
+# 总限幅（%）
+min_duty=0
+max_duty=100
+# 温度读不到时的保底占空比
+failsafe_duty=60
+# 三块盘怎么合成一个温度：max=取最高, avg=取平均
+hdd_mode=max
+# 采样间隔（秒）
+update_sec=2
+# 升温趋势加力：每升 1℃/分加多少 %，最多加多少 %
+boost_gain=15
+boost_max=30
+# 软件 PWM 频率（Hz）与每个边沿的自旋窗口（微秒）
+freq=12000
+spin_us=4
+# 死区：低于该占空比直接判 0（风扇也转不起来，省 CPU）
+deadband_duty=12

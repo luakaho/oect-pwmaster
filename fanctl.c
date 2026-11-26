@@ -206,6 +206,17 @@ static int load_cfg(void) {
     g_cfg_mtime = st.st_mtime;
     return changed;
 }
+static void rotate_log(const char *logdir) {
+    char cur[320], bak[320];
+    snprintf(cur, sizeof cur, "%s/fan.log", logdir);
+    snprintf(bak, sizeof bak, "%s/fan.log.1", logdir);
+    struct stat st;
+    if (stat(cur, &st) != 0) return;
+    if (st.st_size < 4 * 1024 * 1024) return;
+    unlink(bak);
+    rename(cur, bak);
+}
+
 static void wait_for(long long dur_ns){
     long long start = now_ns();
     long long spin = (long long)g_spin_us * 1000LL;
@@ -253,6 +264,8 @@ static void *ctrl_thread(void *a) {
     int fan_on = 0; int cfg_reload = 0;
     while (g_run) {
         cfg_reload = load_cfg();
+        { static time_t lastrot = 0; time_t nw = time(NULL);
+          if (nw - lastrot > 3600) { rotate_log(g_logdir); lastrot = nw; } }
         double cpu = read_t("/sys/class/thermal/thermal_zone0/temp");
         double dts[16]; int dn = scan_disks(dts, 16);
         double dmax = -1, davg = -1, dsum = 0;
@@ -307,8 +320,8 @@ static void *ctrl_thread(void *a) {
             djlen += snprintf(dj + djlen, sizeof dj - djlen, "%s%.0f", i ? "," : "", dts[i]);
         djlen += snprintf(dj + djlen, sizeof dj - djlen, "]");
         FILE *sf = fopen(g_status, "w");
-        if (sf) { fprintf(sf, "{\"time\":\"%s\",\"cpu_c\":%.1f,\"disk_n\":%d,\"disk_max_c\":%.1f,\"disk_avg_c\":%.1f,\"disks_c\":%s,\"duty\":%d,\"rpm\":%d,\"freq\":%d,\"mode\":\"%s\",\"min_duty\":%d,\"max_duty\":%d,\"hyst_start\":%.0f,\"hyst_stop\":%.0f,\"fail\":%d,\"update_ms\":%d,\"boost_gain\":%.1f,\"boost_max\":%.1f,\"freq\":%d,\"spin_us\":%d,\"deadband_duty\":%d}\n",
-                    ts, cpu, dn, dmax, davg, dj, duty, g_rpm, FREQ, access(g_manual,F_OK)==0?"手动":"自动", g_min_duty, g_max_duty, g_hyst_start, g_hyst_stop, g_failsafe, g_update_ms, g_boost_gain, g_boost_max, g_freq, g_spin_us, g_deadband); fclose(sf); }
+        if (sf) { fprintf(sf, "{\"time\":\"%s\",\"ts\":%ld,\"cpu_c\":%.1f,\"disk_n\":%d,\"disk_max_c\":%.1f,\"disk_avg_c\":%.1f,\"disks_c\":%s,\"duty\":%d,\"rpm\":%d,\"mode\":\"%s\",\"min_duty\":%d,\"max_duty\":%d,\"hyst_start\":%.0f,\"hyst_stop\":%.0f,\"fail\":%d,\"update_ms\":%d,\"boost_gain\":%.1f,\"boost_max\":%.1f,\"freq\":%d,\"spin_us\":%d,\"deadband_duty\":%d}\n",
+                    ts, (long)time(NULL), cpu, dn, dmax, davg, dj, duty, g_rpm, access(g_manual,F_OK)==0?"手动":"自动", g_min_duty, g_max_duty, g_hyst_start, g_hyst_stop, g_failsafe, g_update_ms, g_boost_gain, g_boost_max, g_freq, g_spin_us, g_deadband); fclose(sf); }
         for (int slept = 0; slept < g_update_ms && g_run; slept += 100) usleep(100000);
     }
     return NULL;

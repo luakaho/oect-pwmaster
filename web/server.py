@@ -80,7 +80,7 @@ input[type=range]{width:100%}
 button{background:var(--acc);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-size:14px;cursor:pointer}
 button.gray{background:#2a3140}button.sm{padding:6px 10px;font-size:13px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-canvas{width:100%;height:140px;display:block}
+canvas{width:100%;height:auto;display:block}
 .legend{color:var(--dim);font-size:12px;margin-top:4px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 #tip{position:fixed;max-width:280px;background:#1e2532;border:1px solid #33405a;color:#e8ebf2;font-size:13px;padding:10px 12px;border-radius:10px;display:none;z-index:99;box-shadow:0 8px 24px #0008;line-height:1.5}
@@ -98,7 +98,7 @@ canvas{width:100%;height:140px;display:block}
  <div class=card><div class=k>模式</div><div class="v small" id=mode>--</div></div>
 </div>
 
-<div class=panel><canvas id=chart></canvas><div class=legend>
+<div class=panel><canvas id=chart width=900 height=300></canvas><div class=legend>
 <span><i class=dot style="background:#4ea1ff"></i>CPU</span>
 <span><i class=dot style="background:#ffb020"></i>硬盘最高温</span>
 <span><i class=dot style="background:#57d38c"></i>风扇档位</span></div></div>
@@ -208,13 +208,19 @@ async function tick(){try{
  document.getElementById('sl').value=s.duty;document.getElementById('slv').textContent=s.duty+'%';
  hist=await (await fetch('api/history')).json();draw();
 }catch(e){}}
-function draw(){const cv=document.getElementById('chart'),g=cv.getContext('2d');
- const W=cv.width=cv.clientWidth*2,H=cv.height=280;g.clearRect(0,0,W,H);
- if(!hist.length)return;
- const maxT=Math.max(70,Math.max(...hist.map(h=>Math.max(h.cpu,h.d1,h.d2,h.d3)))+5);
+function draw(){try{
+ const cv=document.getElementById('chart');if(!cv)return;const g=cv.getContext('2d');
+ const W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+ if(!hist||!hist.length)return;
+ const maxT=Math.max(70,Math.max(...hist.map(h=>Math.max(h.cpu,h.dmax||0)))+5);
  const X=i=>i*(W-20)/(hist.length-1)+10,Y=t=>H-20-(t/maxT)*(H-40);
- const line=(f,c)=>{g.beginPath();g.strokeStyle=c;g.lineWidth=3;hist.forEach((h,i)=>{const v=Math.min(f(h),maxT);i?g.lineTo(X(i),Y(v)):g.moveTo(X(i),Y(v))});g.stroke()};
- line(h=>h.cpu,'#4ea1ff');line(h=>h.dmax,'#ffb020');line(h=>h.duty*maxT/100,'#57d38c');}
+ const line=(f,c)=>{g.beginPath();g.strokeStyle=c;g.lineWidth=3;
+   hist.forEach((h,idx)=>{const v=Math.min(f(h),maxT);idx?g.lineTo(X(idx),Y(v)):g.moveTo(X(idx),Y(v));});
+   g.stroke();};
+ line(h=>h.cpu,'#4ea1ff');
+ line(h=>h.dmax||0,'#ffb020');
+ line(h=>h.duty*maxT/100,'#57d38c');
+}catch(e){console.error('draw failed',e);}}
 async function applyManual(){const v=document.getElementById('sl').value;await fetch('api/duty?v='+v,{method:'POST'});tick()}
 async function setAuto(){await fetch('api/duty',{method:'DELETE'});tick()}
 document.getElementById('sl').addEventListener('input',e=>document.getElementById('slv').textContent=e.target.value+'%');

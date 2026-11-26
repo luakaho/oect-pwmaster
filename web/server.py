@@ -80,6 +80,9 @@ input[type=range]{width:100%}
 button{background:var(--acc);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-size:14px;cursor:pointer}
 button.gray{background:#2a3140}button.sm{padding:6px 10px;font-size:13px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#manualPanel.off #manualRow{opacity:.35}
+#manualPanel.off #mstate{color:#ffb020}
+button:disabled{opacity:.45;cursor:not-allowed}
 canvas{width:100%;height:auto;display:block}
 .legend{color:var(--dim);font-size:12px;margin-top:4px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
@@ -112,12 +115,16 @@ canvas{width:100%;height:auto;display:block}
  </div>
 </div>
 <details class=pro><summary>专业设置（曲线 / 手动 / 阈值）</summary>
-<div class=panel>
- <h2>手动控制 <span class=help data-tip="拖动滑块可以直接指定风扇档位（0-100%）。设完会一直保持，直到点「回到自动」。">?</span></h2>
- <div class=row><input id=sl type=range min=0 max=100 value=0>
- <span id=slv style="width:44px">0%</span>
- <button onclick=applyManual()>应用</button>
- <button class=gray onclick=setAuto()>回到自动</button></div>
+<div class=panel id=manualPanel>
+ <h2>手动控制 <span class=help data-tip="自动模式下（包括用了一键方案）这里会置灰不可操作。想手动指定档位，先点「启用手动」，拖滑块后点「应用」；点「回到自动」恢复温度调速。">?</span></h2>
+ <div class=row style="margin-bottom:8px"><span id=mstate style="color:var(--dim);font-size:13px">当前：自动（温度调速）</span></div>
+ <div class=row id=manualRow>
+   <input id=sl type=range min=0 max=100 value=0 disabled>
+   <span id=slv style="width:44px">0%</span>
+   <button id=btnEnable onclick=enableManual()>启用手动</button>
+   <button id=btnApply onclick=applyManual() disabled>应用</button>
+   <button id=btnAuto class=gray onclick=setAuto()>回到自动</button>
+ </div>
 </div>
 
 
@@ -205,7 +212,15 @@ async function tick(){try{
  document.getElementById('duty').textContent=s.duty+'%';
  document.getElementById('rpm').textContent=(s.rpm===undefined||s.rpm<0)?'未启用（安全模式）':(s.rpm>0?s.rpm+' 转':'无信号');
  document.getElementById('mode').textContent=s.mode||'自动';
- const slEl=document.getElementById('sl');if(slEl&&Date.now()>(window.__slPause||0)){slEl.value=s.duty;document.getElementById('slv').textContent=s.duty+'%';}
+ const manual=(s.mode||'')==='手动';
+ const mp=document.getElementById('manualPanel');
+ if(mp) mp.classList.toggle('off',!manual);
+ const st=document.getElementById('mstate');
+ if(st) st.textContent=manual?'当前：手动（已锁定档位）':'当前：自动（温度调速，手动已锁定）';
+ const be=document.getElementById('btnEnable'); if(be) be.disabled=manual;
+ const ba=document.getElementById('btnApply'); if(ba) ba.disabled=!manual;
+ const slEl=document.getElementById('sl');
+ if(slEl){slEl.disabled=!manual; if(manual&&Date.now()>(window.__slPause||0)){slEl.value=s.duty;document.getElementById('slv').textContent=s.duty+'%';}}
  hist=await (await fetch('api/history')).json();draw();
 }catch(e){}}
 function draw(){try{
@@ -221,6 +236,13 @@ function draw(){try{
  line(h=>h.dmax||0,'#ffb020');
  line(h=>h.duty*maxT/100,'#57d38c');
 }catch(e){console.error('draw failed',e);}}
+async function enableManual(){
+ const sl=document.getElementById('sl');
+ const v=sl?sl.value:(50);
+ await fetch('api/duty?v='+v,{method:'POST'});
+ window.__slPause=Date.now()+8000;
+ tick();
+}
 async function applyManual(){const v=document.getElementById('sl').value;await fetch('api/duty?v='+v,{method:'POST'});tick()}
 async function setAuto(){await fetch('api/duty',{method:'DELETE'});tick()}
 document.getElementById('sl').addEventListener('input',e=>{window.__slPause=Date.now()+10000;document.getElementById('slv').textContent=e.target.value+'%';});

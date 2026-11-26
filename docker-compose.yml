@@ -1,7 +1,9 @@
 services:
   oect-pwmaster:
-    build: .
-    image: oect-pwmaster:latest
+    # 默认使用 GitHub Actions 构建好的多架构镜像（arm64 / amd64）
+    image: ghcr.io/luakaho/oect-pwmaster:latest
+    # 想本地自己构建就注释上面一行、取消下面两行
+    # build: .
     container_name: oect-pwmaster
     restart: unless-stopped
     privileged: true
@@ -16,3 +18,8 @@ services:
       - /sys:/sys
       - ./data:/data
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/api/status',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

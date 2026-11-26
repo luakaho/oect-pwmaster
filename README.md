@@ -134,7 +134,7 @@ LED-B   LED-G   VCC3V3   LED-R
 
 前提：装好 Docker / Docker Compose 的 fnOS（或其他 Linux）。
 
-### 方式一：直接用预构建镜像（推荐，不用编译）
+### 方式一：直接用预构建镜像（不用编译；需要仓库的 Actions 已跑过一次）
 
 ```bash
 docker run -d --name oect-pwmaster --restart unless-stopped --privileged \
@@ -145,7 +145,7 @@ docker run -d --name oect-pwmaster --restart unless-stopped --privileged \
   ghcr.io/luakaho/oect-pwmaster:latest
 ```
 
-镜像由 GitHub Actions 自动构建（arm64/amd64 都有）。想用 compose 就下 `docker-compose.yml` 后 `docker compose up -d`。
+镜像由 GitHub Actions 自动构建（arm64/amd64 都有）。**如果 GHCR 上还没有镜像，请用下面的方式二在本地构建一次**。想用 compose 就下 `docker-compose.yml` 后 `docker compose up -d`。
 
 ### 方式二：本地构建
 

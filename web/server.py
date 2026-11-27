@@ -13,8 +13,9 @@ from urllib.parse import urlparse, parse_qs
 DATA = os.environ.get("FAN_DATA", "/data")
 CFGF = os.path.join(DATA, "config", "fan.conf")
 CTRL = os.path.join(DATA, "manual.duty")
-LOG  = os.path.join(DATA, "fan.log")
-STAT = os.path.join(DATA, "status.json")
+RT   = os.environ.get("FAN_RT", DATA)
+LOG  = os.path.join(RT, "fan.log")
+STAT = os.path.join(RT, "status.json")
 PORT = int(os.environ.get("PORT", "8090"))
 VERSION = "1.1.0"
 
@@ -367,6 +368,11 @@ class H(BaseHTTPRequestHandler):
                         bad.append("%s: %s" % (k, err))
                         continue
                     old[k] = v
+                try:
+                    if float(old.get("hyst_start", 33)) <= float(old.get("hyst_stop", 31)):
+                        bad.append("hyst_start 必须大于 hyst_stop（起转温度要高于停转温度）")
+                except Exception:
+                    pass
                 if bad:
                     self._s(json.dumps({"error": "；".join(bad)}, ensure_ascii=False), code=400)
                     return

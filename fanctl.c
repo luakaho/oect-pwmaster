@@ -24,6 +24,7 @@
 
 static char g_data[220] = "/data";
 static char g_logdir[260], g_cfgfile[260], g_manual[260], g_status[260];
+static char g_rt[260], g_logp[320];
 static void init_paths(void) {
     const char *d = getenv("FAN_DATA");
     if (d && *d) { strncpy(g_data, d, sizeof g_data - 1); }
@@ -31,6 +32,12 @@ static void init_paths(void) {
     snprintf(g_cfgfile,  sizeof g_cfgfile,  "%s/config/fan.conf", g_data);
     snprintf(g_manual,   sizeof g_manual,   "%s/manual.duty", g_data);
     snprintf(g_status,   sizeof g_status,   "%s/status.json", g_data);
+    /* 运行时目录：日志与状态默认写内存盘，避免每 2 秒写机械盘 */
+    const char *rt = getenv("FAN_RT");
+    if (rt && *rt) { strncpy(g_rt, rt, sizeof g_rt - 1); }
+    else { snprintf(g_rt, sizeof g_rt, "%s", g_data); }
+    snprintf(g_logp,   sizeof g_logp,   "%s/fan.log", g_rt);
+    snprintf(g_status, sizeof g_status, "%s/status.json", g_rt);
 }
 #define LEDS_DRV "/sys/bus/platform/drivers/leds-gpio"
 #define LEDS_DEV "gpio-leds"
@@ -203,6 +210,7 @@ static int load_cfg(void) {
     if (g_spin_us > 20) g_spin_us = 20;
     if (g_deadband < 0) g_deadband = 0;
     if (g_deadband > 40) g_deadband = 40;
+    if (g_hyst_stop >= g_hyst_start) g_hyst_stop = g_hyst_start - 1;
     g_cfg_mtime = st.st_mtime;
     return changed;
 }
@@ -265,7 +273,7 @@ static void *ctrl_thread(void *a) {
     while (g_run) {
         cfg_reload = load_cfg();
         { static time_t lastrot = 0; time_t nw = time(NULL);
-          if (nw - lastrot > 3600) { rotate_log(g_logdir); lastrot = nw; } }
+          if (nw - lastrot > 3600) { rotate_log(g_rt); lastrot = nw; } }
         double cpu = read_t("/sys/class/thermal/thermal_zone0/temp");
         double dts[16]; int dn = scan_disks(dts, 16);
         double dmax = -1, davg = -1, dsum = 0;
@@ -312,7 +320,7 @@ static void *ctrl_thread(void *a) {
         g_duty = duty;
         time_t tt = time(NULL); struct tm tm; localtime_r(&tt, &tm);
         char ts[32]; strftime(ts, sizeof ts, "%F %T", &tm);
-        FILE *lf = fopen(logp, "a");
+        FILE *lf = fopen(g_logp, "a");
         if (lf) { fprintf(lf, "%s,cpu=%.0f,n=%d,dmax=%.0f,davg=%.0f,duty=%d,rpm=%d\n", ts,cpu,dn,dmax,davg,duty,g_rpm); fclose(lf); }
         char dj[256]; int djlen = 0;
         djlen += snprintf(dj + djlen, sizeof dj - djlen, "[");

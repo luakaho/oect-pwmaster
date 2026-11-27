@@ -9,6 +9,7 @@ services:
     privileged: true
     environment:
       - FAN_DATA=/data
+      - FAN_RT=/data/rt
       - PORT=8090
       - TZ=Asia/Shanghai
     ports:
@@ -17,6 +18,7 @@ services:
       - /dev:/dev
       - /sys:/sys
       - ./data:/data
+      - /dev/shm/oect-pwmaster:/data/rt
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/api/status',timeout=3)"]

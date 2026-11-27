@@ -163,10 +163,11 @@ docker compose up -d --build
 
 ```
 data/
-├── config/fan.conf     # 所有参数
-├── fan.log             # 采样日志
-├── status.json         # 当前状态
-└── manual.duty         # 存在即代表手动档
+├── config/fan.conf     # 所有参数（唯一需要持久化的文件）
+├── manual.duty         # 临时：存在即代表手动档
+└── rt/                 # 运行时（日志/状态，挂内存盘，不写机械盘）
+    ├── fan.log
+    └── status.json
 ```
 
 ### 容器为什么用 privileged
